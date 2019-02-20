@@ -1,0 +1,25 @@
+#+TITLE: Docker Authz
+
+A complete/complex Docker [[https://docs.docker.com/engine/extend/plugins_authorization/]authorization plugin] that runs standalone directly on a host, or can be isolated in a container.
+User's basic authorication is provided by Docker daemon when it enables TLS verification.
+
+* Resource file compose 
+The plugin uses some abstract concept to do authorization, they are:
+
+- User: user account
+- User group: the group which contains the user
+- Host: the host which runs docker daemon
+- Host group: the group which contains the host
+- Deployment environment: the environment which contains host group
+- Rule: depend on one condition and make judgement
+- Policy: base on rules and request URI, make judgement
+
+User, user group, host, host group and deployment environment information can be defined in config files directly, or it can be written in a text file which has the same format as Linux's passwd or group files. It can be easily extended to enable other backends to provide such information, like LDAP or DATABASE.
+
+* Policy apply
+Policy is a group of rules which will be applied on requests. The request selected to be apply what policy is based on the request's uri, all policies which have the uri pattern matching the request's uri will be applied.
+
+Policy also have a condition when making final judgement based on all rules' result.
+It can be =all= which means all rules must succeed, or =some= which allow some of the rules failure, but not all failure, or =none=, means no rules should succeed.
+
+
