@@ -1,18 +1,19 @@
 #+TITLE: Docker Authz
 
-A complete/complex Docker [[https://docs.docker.com/engine/extend/plugins_authorization/]authorization plugin] that runs standalone directly on a host, or can be isolated in a container.
+A complete/complex Docker [[https://docs.docker.com/engine/extend/plugins_authorization/][authorization plugin]] that runs standalone directly on a host, or can be isolated in a container.
+
 User's basic authorication is provided by Docker daemon when it enables TLS verification.
 
 * Resource file compose 
-The plugin uses some abstract concept to do authorization, they are:
+The plugin uses some abstract concepts to do authorization, they are:
 
-- User: user account
-- User group: the group which contains the user
+- User: user accounts
+- User group: user group information
 - Host: the host which runs docker daemon
-- Host group: the group which contains the host
-- Deployment environment: the environment which contains host group
-- Rule: depend on one condition and make judgement
-- Policy: base on rules and request URI, make judgement
+- Host group: host group information
+- Deployment environment: the environment which contains host groups.
+- Rule: depend on one condition to make decision.
+- Policy: base on rules and request URI to make decision.
 
 User, user group, host, host group and deployment environment information can be defined in config files directly, or it can be written in a text file which has the same format as Linux's passwd or group files. It can be easily extended to enable other backends to provide such information, like LDAP or DATABASE.
 
@@ -22,4 +23,9 @@ Policy is a group of rules which will be applied on requests. The request select
 Policy also have a condition when making final judgement based on all rules' result.
 It can be =all= which means all rules must succeed, or =some= which allow some of the rules failure, but not all failure, or =none=, means no rules should succeed.
 
+* Custom information to verify
+If the original request from Docker daemon does not contains the information you interest, you can define your hooker(a.k.a function) to be called at proper time to add those information into the request, then you can configure rules to validate the information.
 
+There are 3 this kind of hookers already build in, =wrap-usergroup-hook=, =wrap-host-hook=, =wrap-hostgroup-hook=. To hook the function, use =add-hook= instruction.
+
+For details, check the =config.clj= file.
