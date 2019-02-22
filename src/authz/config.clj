@@ -48,33 +48,35 @@
 ;; :optional - ignore input and return true
 
 (defrule valid-uri
-  :path [:params "RequestUri"]
-  :transform ["^/v\\d\\.\\d\\d" ""]
+  :path [:body "RequestUri"]
+  :transform ["^/v\\d\\.\\d\\d" ""
+              "\\?.*" ""
+              "containers/[^/]*/" "containers/"]
   :validator txtfile-api)
 
 (defrule valid-user
-  :path [:params "User"]
+  :path [:body "User"]
   :validator txtfile-users)
 
 (defrule super-user
-  :path [:params "User"]
+  :path [:body "User"]
   :validator txtfile-superusers)
 
 (defrule valid-usergroup
-  :path [:params "UserGroup"]
+  :path [:body "UserGroup"]
   :validator txtfile-usergroups)
 
 (defrule super-usergroup
-  :path [:params "UserGroup"]
+  :path [:body "UserGroup"]
   :validator txtfile-supergroups)
 
 ;; some derived arguments are stored in json's "@" key
 (defrule valid-host
-  :path [:params "Host"]
+  :path [:body "Host"]
   :validator txtfile-hosts)
 
 (defrule valid-hostgroup
-  :path [:params "HostGroup"]
+  :path [:body "HostGroup"]
   :validator txtfile-hostgroups)
 
 ;; lookup function for user group identification
@@ -93,14 +95,14 @@
   :return name->group)
 
 ;; add callback function to predefined hooks
-(add-hook wrap-usergroups-param-hook usergroups-lookup)
-(add-hook wrap-hostgroups-param-hook hostgroups-lookup)
-(add-hook wrap-deploymentenvironments-param-hook deploymentenvironments-lookup)
+(add-hook wrap-usergroups-hook usergroups-lookup)
+(add-hook wrap-hostgroups-hook hostgroups-lookup)
+(add-hook wrap-deploymentenvironments-hook deploymentenvironments-lookup)
 
 ;; re-subset?: checking subset1 again subset2 which contains regexp that must
 ;;             match entry in subset1
 (defrule repo-tags
-  :path [:params "ResponseBody" "RepoTags"]
+  :path [:body "ResponseBody" "RepoTags"]
   :validator #(re-subset? % #{"docker.io/busybox.*"}))
 
 
@@ -109,15 +111,15 @@
   :validator #(= % "POST"))
 
 (defrule have-labels
-  :path [:params "Labels"]
+  :path [:body "Labels"]
   :validator #(re-subset? % #{"com\\.company\\.user-.*"}))
 
 (defrule drop-caps
-  :path [:params "HostConfig" "CapDrop"]
+  :path [:body "HostConfig" "CapDrop"]
   :validator #(subset? #{"NET_BIND_SERVICE" "SETUID" "SETGID"} %))
 
 (defrule have-caps
-  :path [:params "HostConfig" "CapAdd"]
+  :path [:body "HostConfig" "CapAdd"]
   :type :optional
   :validator #(subset? % #{"SYS_PTRACE"}))
 
@@ -127,19 +129,19 @@
   :validator #{"bridge" "none"})
 
 (defrule allowed-environments
-  :path [:params "DeploymentEnvironment"]
+  :path [:body "DeploymentEnvironment"]
   :validator #{"dev" "qa" "prod" "uat"})
 
 (defrule denied-environments
-  :path [:params "DeploymentEnvironment"]
+  :path [:body "DeploymentEnvironment"]
   :validator #{"uat"})
 
 (defrule allowed-mounts
-  :path [:params "HostConfig" "Mounts"]
+  :path [:body "HostConfig" "Mounts"]
   :validator #(re-subset? % #{".*=/opt" ".*=/var/log" ".*=/user/local"}))
 
 (defrule allowed-volumes
-  :path [:params "Volumes"]
+  :path [:body "Volumes"]
   :validator #(re-subset? % #{"com\\.company\\.user-.*"}))
 
 (defpolicy default-policy
@@ -162,7 +164,8 @@
 (defpolicy container-create
   :base #{"/v1.26"}
   :uri "/containers/create"
-  :rules [super-user super-usergroup have-labels drop-caps allowed-mounts])
+  :condition :some
+  :rules [super-user super-usergroup])
 
 (defpolicy build
   :base #{"/v1.26"}

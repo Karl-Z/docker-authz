@@ -3,7 +3,7 @@
   (:require [ring.middleware.defaults :refer :all])
   (:require [ring.middleware.json :refer :all])
   (:require [authz.contenttype :refer :all])
-  #_(:require [ring.middleware.logger :refer :all])
+  (:require [ring.middleware.logger :refer :all])
 )
 
 ;; Load config file
@@ -11,14 +11,15 @@
 
 (def app
   (-> authz-routes
-      (wrap-usergroups-param)
-      (wrap-deploymentenvironments-param)
-      (wrap-hostgroups-param)
-      (wrap-host-param)
+      (wrap-usergroups)
+      (wrap-deploymentenvironments)
+      (wrap-hostgroups)
+      (wrap-host)
+      (wrap-body-requesturi)
+      (wrap-response-body-decode)
       (wrap-json-body)
-      (wrap-json-params)
       (wrap-json-response)
       (wrap-content-type :request "application/json")
       (wrap-defaults api-defaults)
-      #_(wrap-with-logger)))
+      (wrap-with-logger)))
 

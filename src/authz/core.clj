@@ -7,12 +7,14 @@
   (:require [clj-dns.core :as dns])
   (:require [ring.util.request :as request])
   (:require [ring.util.response :as response])
+  (:require [ring.util.codec :as codec])
   (:require [ring.middleware.defaults :refer :all])
   (:require [ring.middleware.json :refer :all])
   (:require [compojure.core :refer :all]
             [compojure.route :as route]
             [compojure.handler :as handler])
-  )
+  (:require [cheshire.core :as json])
+  (:require [clojure.walk :as walk]))
 
 ;; txt file driver, file type like /etc/passwd
 ;; args: map of driver specification:
@@ -27,7 +29,7 @@
      ;; a lazy sequence of vectors of strings
      (doall (csv/read-csv reader :separator separator :quote quote)))
    (map #(nth % column))
-   (#(if match (filter (partial re-matches (re-pattern ~match)) %) %))
+   (#(if match (filter (partial re-matches (re-pattern match)) %) %))
    (into #{})))
 
 ;; parse file as linux group file format
@@ -74,23 +76,31 @@
   `(def ~name
      (fn* ([request#]
            (log/debug "call rule: " (quote ~name))
-           (log/debug "path: " (get-in request# ~path))
+           (log/debug "check request path: " ~path)
+           (log/debug "request path value: " (get-in request# ~path))
            (when ~transform
              (log/debug "transformed path: " 
                         (reduce (fn [res# [pat# rep#]]
                                   (str/replace res# (re-pattern pat#) rep#))
                                 (get-in request# ~path) (partition 2 ~transform))))
            (log/debug "validator: " ~validator)
-           (let [pathval# (get-in request# ~path)
-                 tpathval# (if ~transform
-                             (reduce (fn [res# [pat# rep#]]
-                                       (str/replace res# (re-pattern pat#) rep#))
-                                     pathval# (partition 2 ~transform)  )
-                             pathval#)]
-             (if tpathval#
-               (~validator tpathval#)
-               (if (= :optional ~type) true
-                   false)))))))
+           (let [pathval#
+                 (get-in request# ~path)
+
+                 tpathval#
+                 (if ~transform
+                   (reduce (fn [res# [pat# rep#]]
+                             (str/replace res# (re-pattern pat#) rep#))
+                           pathval# (partition 2 ~transform)  )
+                   pathval#)
+                 
+                 result#
+                 (if tpathval#
+                   (~validator tpathval#)
+                   (if (= :optional ~type) true
+                       false))]
+             (log/debugf "RULE '%s' result: %s" (quote ~name) result#)
+             result#)))))
 
 
 (defn re-subset?
@@ -135,11 +145,11 @@
        (fn [request#]
          (log/debugf "%s: request get: %s"
                      (quote ~name)
-                     (-> request#
-                         (update-in [:json-params "RequestPeerCertificates"]
-                                    #(identity %2) "...")
-                         (update-in [:params "RequestPeerCertificates"]
-                                    #(identity %2) "..."))
+                     (if (get-in request# [:body "RequestPeerCertificates"])
+                       (-> request#
+                           (update-in [:body "RequestPeerCertificates"]
+                                      #(identity %2) "..."))
+                       request#)
                      (log/debug "request type: " (type request#)))
          (log/debug "input-path: "  ~input-path)
          (log/debug "output-path: " ~output-path)
@@ -152,18 +162,18 @@
                     ((deref ~hook))))
          
          (if (deref ~hook)
-           (let [req# 
-                 (assoc-in request# ~output-path
-                           (if ~input-path
+           (let [val# (if ~input-path
                              ((deref ~hook) (get-in request# ~input-path))
-                             ((deref ~hook))))
-                        ]
+                             ((deref ~hook)))
+                 req# (if val# 
+                        (assoc-in request# ~output-path val#)
+                        request#)]
              (log/debugf "%s: request put: %s" (quote ~name)
-                         (-> req#
-                         (update-in [:json-params "RequestPeerCertificates"]
-                                    #(identity %2) "...")
-                         (update-in [:params "RequestPeerCertificates"]
-                                    #(identity %2) "...")))
+                         (if (get-in req# [:body "RequestPeerCertificates"])
+                           (-> req#
+                               (update-in [:body "RequestPeerCertificates"]
+                                          #(identity %2) "..."))
+                           req#))
              (handler# req#))
            (handler# request#))))))
 
@@ -184,32 +194,57 @@
 
 ;; Middleware for adding peer host info
 ;; normally, it is the docker engine
-(defwrapper wrap-host-param
-  :hook wrap-host-param-hook
+(defwrapper wrap-host
+  :hook wrap-host-hook
   :input-path [:remote-addr]
-  :output-path [:params "Host"])
+  :output-path [:body "Host"])
 
 ;; Middleware for adding host group info
-(defwrapper wrap-hostgroups-param
-  :hook wrap-hostgroups-param-hook
-  :input-path [:params "Host"]
-  :output-path [:params "HostGroup"])
+(defwrapper wrap-hostgroups
+  :hook wrap-hostgroups-hook
+  :input-path [:body "Host"]
+  :output-path [:body "HostGroup"])
 
 ;; Middleware for adding user group info
-(defwrapper wrap-usergroups-param
-  :hook wrap-usergroups-param-hook
-  :input-path [:params "User"]
-  :output-path [:params "UserGroup"])
+(defwrapper wrap-usergroups
+  :hook wrap-usergroups-hook
+  :input-path [:body "User"]
+  :output-path [:body "UserGroup"])
 
 ;; Middleware for adding deployment environment
-(defwrapper wrap-deploymentenvironments-param
-  :hook wrap-deploymentenvironments-param-hook
-  :input-path [:params "HostGroup"]
-  :output-path [:params "DeploymentEnvironment"])
+(defwrapper wrap-deploymentenvironments
+  :hook wrap-deploymentenvironments-hook
+  :input-path [:body "HostGroup"]
+  :output-path [:body "DeploymentEnvironment"])
+
+;; Handle ResponseBody in request's [:body "ResponseBody"] key
+(defwrapper wrap-response-body-decode
+  :hook wrap-response-body-decode-hook
+  :input-path [:body "ResponseBody"]
+  :output-path [:body "ResponseBody"])
+
+;; Decode ResponseBody
+(add-hook wrap-response-body-decode-hook
+          #(when % (json/parse-string (slurp (codec/base64-decode %)))))
+
+;; Decode RequestUri parameters, add them in body
+(defwrapper wrap-body-requesturi
+  :hook wrap-body-requesturi-hook
+  :input-path [:body "RequestUri"]
+  :output-path [:body :params])
+
+;; Function to parse uri and return hash of parameters in uri
+(defn parse-uri
+  [uri]
+  (when (some #(= % \?) uri)
+    (-> uri
+        (str/replace #"^.*\?" "")
+        (codec/form-decode)
+        (walk/keywordize-keys))))
 
 ;; Add some hooks
-(add-hook wrap-host-param-hook host-lookup)
-
+(add-hook wrap-host-hook host-lookup)
+(add-hook wrap-body-requesturi-hook parse-uri)
 
 ;; policy pool is a map, key is the api version, value is a vector of policies
 (def ^:dynamic *policy-pool* (atom {}))
@@ -222,7 +257,7 @@
 ;; :condition - return true or false based on condition applied to the result of applying rules
 ;;    values: :all  all rules must return true
 ;;            :some at least one rule returns true
-;;            :one only one rule returns true
+;;            :any only one rule returns true
 ;;            :none none of the rules reburns true
 
 (defmacro defpolicy
@@ -232,28 +267,31 @@
     `(do
        (def ~fsym#
          (fn* ([request#]
-               (log/debugf "'%s' policy request: %s" (quote ~fsym#) request#)
-               (log/debug "rules: " ~rules)
-               (log/debug "RequestURI: " (get-in request# [:params "RequestURI"]))
+               (log/debugf "'%s' policy checking" (quote ~fsym#))
+               (log/debug "RequestUri: " (get-in request# [:body "RequestUri"]))
                (log/debug "uri pattern: " ~uri)
-               (let [r# (map #(% request#) ~rules)]
+               (log/debug "rules to apply: " ~rules)
+               (log/debug "result condition: " ~condition)
+               #_(let [r# (map #(% request#) ~rules)]
                  (log/debug "applied result number of elements: " (count r#))
-                 (log/debug "applied result: " (map boolean r#))
-                 (log/debug "applied condition: " ~condition))
-               (condp = ~condition
-                 :all
-                 (every? boolean 
-                         (map #(% request#) ~rules))
-                 :some
-                 (some boolean 
-                       (map #(% request#) ~rules))
-                 :one
-                 (= 1 (count (filter boolean
-                                     (map #(% request#) ~rules))))
-                 :none
-                 (every? (comp not boolean)
-                         (map #(% request#) ~rules))
-                 ))))
+                 (log/debug "applied result: " (map boolean r#)))
+               (let [result#
+                     (condp = ~condition
+                       :all
+                       (every? boolean 
+                               (map #(% request#) ~rules))
+                       :some
+                       (some boolean 
+                             (map #(% request#) ~rules))
+                       :any
+                       (= 1 (count (filter boolean
+                                           (map #(% request#) ~rules))))
+                       :none
+                       (every? (comp not boolean)
+                               (map #(% request#) ~rules))
+                       )]
+                 (log/debugf "POLICY '%s' result: %s" (quote ~fsym#) result#)
+                 result#))))
        (doseq [bs# ~base] ; update policy-pool, append policy based on the base and uri
          (swap! *policy-pool*
                 update-in [bs# ~uri]
@@ -281,16 +319,16 @@
      "Err" err})))
 
 (defn authzreq
-  [{{:strs [User UserAuthNMethod Requestmethod RequestURI
-            RequestBody RequestHeader]} :params :as req}]
+  [{{:strs [User UserAuthNMethod Requestmethod RequestUri
+            RequestBody RequestHeader]} :body :as req}]
   (authz-response true "Permitted"))
 
 
 
 (defn authzres
-  [{{:strs [User UserAuthNMethod Requestmethod RequestURI
+  [{{:strs [User UserAuthNMethod Requestmethod RequestUri
             RequestBody ResponseBody ResponseHeader
-            ResponseStatusCode]} :params :as req}]
+            ResponseStatusCode]} :body :as req}]
   (authz-response true "Permitted")
   )
 
@@ -300,23 +338,24 @@
   (GET "/_ping" [] (authz-response true))
   (POST "/Plugin.Activate" [] (response/response {:Implements ["authz"]}))
   (POST "/AuthZPlugin.AuthZReq" req
-        (if-let [request-uri (get-in req [:params "RequestUri"])]
+        (if-let [request-uri (get-in req [:body "RequestUri"])]
           (condp re-matches request-uri
             #"/v1\.\d\d/.*"
             (let [[_ base uri] (re-find #"^(/v1\.\d\d)(/.*)" request-uri)
                   all-keys-in-policy-pool (keys (get @*policy-pool* base))
                   applied-uri-patterns (filter #(re-matches (re-pattern %) uri)
                                                (keys (get @*policy-pool* base)))
-                  applied-rules (map #(get-in @*policy-pool* [base %]) applied-uri-patterns)
-                  reduced-rules (reduce into #{} applied-rules)
-                  rule-apply-result (doall (map #(% req) reduced-rules))]
+                  rules-to-apply (map #(get-in @*policy-pool* [base %]) applied-uri-patterns)
+                  unique-rules-to-apply (reduce into #{} rules-to-apply)
+                  rules-apply-result (doall (map #(vector % (% req)) unique-rules-to-apply))]
               (log/debugf "base: %s uri: %s" base uri)
               (log/debug "policy-pool: " @*policy-pool*)
               (log/debug "all-keys-in-policy-pool: " all-keys-in-policy-pool)
               (log/debug "applied-uri-patterns: " applied-uri-patterns)
-              (log/debug "applied-rules: " applied-rules)
-              (log/debug "reduced-rules: " reduced-rules)
-              (log/debug "rule-apply-result: " rule-apply-result)
+              (log/debug "applied-rules: " rules-to-apply)
+              (log/debug "unique-rules: " unique-rules-to-apply)
+              (doseq [rr rules-apply-result]
+                (log/debug "rules-apply-result: " rr))
 
               (if all-keys-in-policy-pool 
                 ;; find applicable uris and collect all rules

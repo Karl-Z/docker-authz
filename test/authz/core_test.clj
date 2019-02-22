@@ -1,7 +1,7 @@
 (ns authz.core-test
   (:require [clojure.test :refer :all])
   (:require [authz.core :refer [defsource defrule deflookup defpolicy defwrapper
-                                wrap-usergroups-param-hook wrap-hostgroups-param-hook
+                                wrap-usergroups-hook wrap-hostgroups-hook
                                 add-hook re-subset? name->group]])
   (:require [clojure.string :as str]))
 
@@ -38,8 +38,8 @@
   :dominion [hostgroups]
   :return name->group)
 
-(add-hook wrap-usergroups-param-hook usergroups-lookup)
-(add-hook wrap-hostgroups-param-hook hostgroups-lookup)
+(add-hook wrap-usergroups-hook usergroups-lookup)
+(add-hook wrap-hostgroups-hook hostgroups-lookup)
 
 ;; ------------------ tests ---------------
 (deftest defsource-test
@@ -60,8 +60,8 @@
   )
 
 (deftest add-hook-test
-  (is (= usergroups-lookup @wrap-usergroups-param-hook) )
-  (is (= hostgroups-lookup @wrap-hostgroups-param-hook) ))
+  (is (= usergroups-lookup @wrap-usergroups-hook) )
+  (is (= hostgroups-lookup @wrap-hostgroups-hook) ))
 
 
 (run-tests)
