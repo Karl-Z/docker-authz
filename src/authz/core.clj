@@ -182,10 +182,13 @@
 (defn find-hostname
   "Find localhost's canonial name"
   [ipaddr]
-  (try
-    (str/trim (dns/reverse-dns-lookup ipaddr))
-    (catch java.net.UnknownHostException e
-      ipaddr)))
+  (let [hn
+        (try
+          (str/trim (dns/reverse-dns-lookup ipaddr))
+          (catch java.net.UnknownHostException e
+            ipaddr))]
+    ;; remove ending dot
+    (subs hn 0 (dec (count hn)))))
 
 ;; lookup for host
 (deflookup host-lookup
@@ -218,13 +221,21 @@
   :output-path [:body "DeploymentEnvironment"])
 
 ;; Handle ResponseBody in request's [:body "ResponseBody"] key
-(defwrapper wrap-response-body-decode
-  :hook wrap-response-body-decode-hook
+(defwrapper wrap-requestbody-decode
+  :hook wrap-requestbody-decode-hook
+  :input-path [:body "RequestBody"]
+  :output-path [:body "RequestBody"])
+
+(defwrapper wrap-responsebody-decode
+  :hook wrap-responsebody-decode-hook
   :input-path [:body "ResponseBody"]
   :output-path [:body "ResponseBody"])
 
 ;; Decode ResponseBody
-(add-hook wrap-response-body-decode-hook
+(add-hook wrap-requestbody-decode-hook
+          #(when % (json/parse-string (slurp (codec/base64-decode %)))))
+
+(add-hook wrap-responsebody-decode-hook
           #(when % (json/parse-string (slurp (codec/base64-decode %)))))
 
 ;; Decode RequestUri parameters, add them in body
