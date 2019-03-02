@@ -1,5 +1,5 @@
 (defproject authz "0.1.0-SNAPSHOT"
-  :description "FIXME: write description"
+  :description "Docker's complete/complex authz plugin"
   :url "http://example.com/FIXME"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
@@ -14,6 +14,7 @@
                  [ring/ring-json "0.5.0-beta1"]
                  [ring/ring-defaults "0.3.2"]
                  [ring/ring-codec "1.1.1"]
+                 [ring-rewrite "0.1.0"]
                  [cheshire "5.8.1"]
                  [clout "2.2.1"]
                  [compojure "1.6.1"]

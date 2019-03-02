@@ -1,22 +1,25 @@
-(ns authz.contenttype
-    (:require [ring.util [request :as req] [response :as res]]))
+(ns authz.wrap-contenttype
+  (:require [clojure.string :as str])
+  (:require [ring.util.response :as response])
+  (:require [clojure.tools.logging :as log])
+  (:require [ring.util [request :as req] [response :as res]]))
 
 
-(defn- content-type-request
+(defn- contenttype-request
   [request ctype]
   (if (and (not (req/content-type request))
            (req/content-length request))
     (assoc-in request [:headers "content-type"] ctype)
     request))
 
-(defn- content-type-response
+(defn- contenttype-response
   [response ctype]
   (if (and (not (res/get-header response "content-type"))
            (res/get-header response "content-length"))
     (res/content-type response ctype)
     response))
 
-(defn wrap-content-type
+(defn wrap-contenttype
   "Middleware that adds a content-type header to the request/response if one is not
   found.  It defaults to 'application/octet-stream'.
 
@@ -33,10 +36,10 @@
    (fn
      ([request]
       (-> request
-          (content-type-request req-ctype)
+          (contenttype-request req-ctype)
           (handler)
-          (content-type-response res-ctype)))
+          (contenttype-response res-ctype)))
      ([request response raise]
       (-> request
-          (content-type-request req-ctype)
-          (handler #(response (content-type-response % res-ctype)) raise))))))
+          (contenttype-request req-ctype)
+          (handler #(response (contenttype-response % res-ctype)) raise))))))
