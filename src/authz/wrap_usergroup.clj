@@ -1,7 +1,5 @@
 (ns authz.wrap-usergroup
   (:require [authz.core :refer :all])
-  (:require [clojure.string :as str])
-  (:require [ring.util.response :as response])
   (:require [clojure.tools.logging :as log]))
 
 ;; Middleware for adding host group info

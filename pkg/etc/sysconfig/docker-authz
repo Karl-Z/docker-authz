@@ -1,0 +1,1 @@
+DOCKER_AUTHZ_POLICY=/etc/docker/policies/policy.clj

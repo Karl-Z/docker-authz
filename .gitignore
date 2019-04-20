@@ -15,3 +15,5 @@ log/
 .gitignore
 *.txt
 *.db
+.eastwood
+/pkg/*.spec

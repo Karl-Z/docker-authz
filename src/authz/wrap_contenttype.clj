@@ -7,8 +7,7 @@
 
 (defn- contenttype-request
   [request ctype]
-  (if (and (not (req/content-type request))
-           (req/content-length request))
+  (if (not (req/content-type request))
     (assoc-in request [:headers "content-type"] ctype)
     request))
 

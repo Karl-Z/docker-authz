@@ -1,9 +1,9 @@
 (ns authz.core-test
   (:require [clojure.test :refer :all])
-  (:require [authz.core :refer [defsource defrule deflookup defpolicy defwrapper
-                                wrap-usergroups-hook wrap-hostgroups-hook
-                                add-hook re-subset? name->group]])
-  (:require [clojure.string :as str]))
+  (:require [authz.core :refer :all])
+  (:require [clojure.string :as str])
+  (:require [authz.wrap-usergroup :refer :all])
+  (:require [authz.wrap-hostgroup :refer :all]))
 
 
 ;; ------------ init ---------------
@@ -30,16 +30,16 @@
   :path ["User"]
   :validator users)
 
-(deflookup usergroups-lookup
+(deflookup usergroup-lookup
   :dominion [usergroups]
   :return name->group)
 
-(deflookup hostgroups-lookup
+(deflookup hostgroup-lookup
   :dominion [hostgroups]
   :return name->group)
 
-(add-hook wrap-usergroups-hook usergroups-lookup)
-(add-hook wrap-hostgroups-hook hostgroups-lookup)
+(add-hook wrap-usergroup-hook usergroup-lookup)
+(add-hook wrap-hostgroup-hook hostgroup-lookup)
 
 ;; ------------------ tests ---------------
 (deftest defsource-test
@@ -56,12 +56,12 @@
   )
 
 (deftest deflookup-test
-  (is (= "ugrp1" (usergroups-lookup "user1")))
+  (is (= "ugrp1" (usergroup-lookup "user1")))
   )
 
 (deftest add-hook-test
-  (is (= usergroups-lookup @wrap-usergroups-hook) )
-  (is (= hostgroups-lookup @wrap-hostgroups-hook) ))
+  (is (= usergroup-lookup @wrap-usergroup-hook) )
+  (is (= hostgroup-lookup @wrap-hostgroup-hook) ))
 
 
 (run-tests)

@@ -1,0 +1,12 @@
+[Unit]
+Description=Docker Authorization Engine
+Documentation=https://github.com/carlzhc/docker-authz/wiki
+After=network.target
+
+[Service]
+EnvironmentFile=/etc/sysconfig/docker-authz
+ExecStart=/usr/bin/java -jar /usr/libexec/docker-authz/docker-authz.jar
+
+[Install]
+WantedBy=multi-user.target
+
